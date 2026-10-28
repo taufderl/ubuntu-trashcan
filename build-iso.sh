@@ -225,17 +225,27 @@ Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 
-  local pkgs=(bcmwl-kernel-source dkms build-essential "linux-headers-$KVER" wpasupplicant iw)
-  log "Downloading ${pkgs[*]} (+ dependencies) for $codename"
+  local apt_opts=() wl_pkg=""
+  has_pkg() { chroot "$root" apt-cache "${apt_opts[@]}" show --no-all-versions "$1" >/dev/null 2>&1; }
   chroot "$root" apt-get -q update
-  if ! chroot "$root" apt-get -qy --download-only install "${pkgs[@]}"; then
-    [[ -n $SNAPSHOT ]] || die "apt could not fetch the packages (and the ISO date is unknown)"
+  if ! has_pkg "linux-headers-$KVER"; then
+    [[ -n $SNAPSHOT ]] || die "linux-headers-$KVER is not in the archive (and the ISO date is unknown)"
     # Point-release kernels drop out of -updates; the snapshot archive keeps them.
-    warn "retrying against the Ubuntu snapshot archive from ${SNAPSHOT}"
-    chroot "$root" apt-get -q --snapshot "${SNAPSHOT}T235959Z" update
-    chroot "$root" apt-get -qy --snapshot "${SNAPSHOT}T235959Z" --download-only install "${pkgs[@]}" ||
-      die "linux-headers-$KVER is not downloadable; cannot ship the Wi-Fi driver"
+    warn "linux-headers-$KVER is gone from the archive; using the snapshot from $SNAPSHOT"
+    apt_opts=(-o "APT::Snapshot=${SNAPSHOT}T235959Z")
+    chroot "$root" apt-get -q "${apt_opts[@]}" update
+    has_pkg "linux-headers-$KVER" || die "linux-headers-$KVER is not downloadable; cannot ship the Wi-Fi driver"
   fi
+  # 26.04 replaced Ubuntu's bcmwl-kernel-source with Debian's broadcom-sta-dkms.
+  for wl_pkg in broadcom-sta-dkms bcmwl-kernel-source; do
+    has_pkg "$wl_pkg" && break
+    wl_pkg=""
+  done
+  [[ -n $wl_pkg ]] || die "neither broadcom-sta-dkms nor bcmwl-kernel-source is available for $codename"
+
+  local pkgs=("$wl_pkg" dkms build-essential "linux-headers-$KVER" wpasupplicant iw)
+  log "Downloading ${pkgs[*]} (+ dependencies) for $codename"
+  chroot "$root" apt-get -qy "${apt_opts[@]}" --download-only install "${pkgs[@]}"
   cp "$root"/var/cache/apt/archives/*.deb "$STAGE/trashcan/debs/"
   log "Staged $(ls "$STAGE/trashcan/debs" | wc -l) packages ($(du -sh "$STAGE/trashcan/debs" | cut -f1))"
   unmount_to "$depth"
