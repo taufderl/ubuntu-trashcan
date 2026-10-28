@@ -332,7 +332,7 @@ xorriso -indev "$ISO" -outdev "$OUT" \
   -compliance no_emul_toc \
   -padding included
 unmount_to 0
-[[ -n ${SUDO_USER:-} ]] && chown "$SUDO_USER:" "$OUT"
+[[ -n ${SUDO_USER:-} ]] && { chown "$SUDO_USER:" "$OUT" 2>/dev/null || true; }
 log "Done: $OUT"
 
 # --- 7. optionally flash it ----------------------------------------------------------
