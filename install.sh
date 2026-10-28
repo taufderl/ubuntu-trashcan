@@ -38,6 +38,13 @@ in_target update-initramfs -u -k all || problem "update-initramfs failed"
 step "Updating GRUB with the Mac Pro kernel arguments"
 in_target update-grub || problem "update-grub failed"
 
+# The installer enables DHCP on both Ethernet ports. Unplugged, they make
+# systemd-networkd-wait-online stall every boot for 2 minutes.
+step "Marking Ethernet ports optional"
+for eth in $(in_target netplan get ethernets 2>/dev/null | sed -n 's/^\([^ #][^:]*\):$/\1/p'); do
+  in_target netplan set "ethernets.$eth.optional=true" || problem "could not mark $eth optional"
+done
+
 step "Enabling services"
 for unit in trashcan-fand.service trashcan-wifi-seed.service; do
   [[ -f $TARGET/etc/systemd/system/$unit ]] && in_target systemctl enable "$unit"
