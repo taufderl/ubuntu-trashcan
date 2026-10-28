@@ -68,8 +68,12 @@ done
 
 # --- checks -----------------------------------------------------------------
 
+# Only 26.04 and newer: older releases ship a different Wi-Fi driver package.
+supported() { [[ $1 =~ ^([0-9]{2})\.([0-9]{2}) ]] && (( 10#${BASH_REMATCH[1]}${BASH_REMATCH[2]} >= 2604 )); }
+
 [[ $RELEASE =~ ^[0-9]{2}\.(04|10)(\.[0-9]+)?$ ]] ||
   die "Ubuntu releases are YY.04 or YY.10; there is no '$RELEASE' (try 26.04)"
+supported "$RELEASE" || die "only Ubuntu 26.04 or newer is supported"
 [[ $GPU == amdgpu || $GPU == radeon ]] || die "--gpu must be amdgpu or radeon"
 (( EUID == 0 )) || die "run as root (mounts, chroot): sudo $0 $*"
 [[ $(uname -m) == x86_64 ]] || die "needs an x86_64 host (the build chroot runs amd64 binaries)"
@@ -200,6 +204,8 @@ KVER=$(find "$ISOMNT/pool" -name 'linux-image-[0-9]*-generic_*.deb' -printf '%f\
 [[ -n $KVER ]] || die "cannot find the installer's kernel (linux-image-*-generic) in the ISO pool"
 SNAPSHOT=$(grep -oE '\(([0-9]{8})' "$ISOMNT/.disk/info" 2>/dev/null | tr -d '(' || true)
 log "ISO: $(cat "$ISOMNT/.disk/info" 2>/dev/null || basename "$ISO")"
+supported "$(grep -oE '[0-9]{2}\.[0-9]{2}' "$ISOMNT/.disk/info" | head -1)" ||
+  die "$(basename "$ISO") is older than Ubuntu 26.04 (or not an Ubuntu ISO)"
 log "Kernel: $KVER"
 
 # --- 3. fetch the extra packages in a throwaway chroot ---------------------------
@@ -225,7 +231,7 @@ Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 
-  local apt_opts=() wl_pkg=""
+  local apt_opts=()
   has_pkg() { chroot "$root" apt-cache "${apt_opts[@]}" show --no-all-versions "$1" >/dev/null 2>&1; }
   chroot "$root" apt-get -q update
   if ! has_pkg "linux-headers-$KVER"; then
@@ -236,14 +242,7 @@ EOF
     chroot "$root" apt-get -q "${apt_opts[@]}" update
     has_pkg "linux-headers-$KVER" || die "linux-headers-$KVER is not downloadable; cannot ship the Wi-Fi driver"
   fi
-  # 26.04 replaced Ubuntu's bcmwl-kernel-source with Debian's broadcom-sta-dkms.
-  for wl_pkg in broadcom-sta-dkms bcmwl-kernel-source; do
-    has_pkg "$wl_pkg" && break
-    wl_pkg=""
-  done
-  [[ -n $wl_pkg ]] || die "neither broadcom-sta-dkms nor bcmwl-kernel-source is available for $codename"
-
-  local pkgs=("$wl_pkg" dkms build-essential "linux-headers-$KVER" wpasupplicant iw)
+  local pkgs=(broadcom-sta-dkms dkms build-essential "linux-headers-$KVER" wpasupplicant iw)
   log "Downloading ${pkgs[*]} (+ dependencies) for $codename"
   chroot "$root" apt-get -qy "${apt_opts[@]}" --download-only install "${pkgs[@]}"
   cp "$root"/var/cache/apt/archives/*.deb "$STAGE/trashcan/debs/"
