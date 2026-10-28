@@ -16,6 +16,9 @@ WORK="$HERE/work"
 GPU=amdgpu
 THERMAL=yes
 KEEP_WORK=no
+FILL_DISK=yes
+SWAP_SIZE=2G
+RESERVED_PCT=1
 WRITE_DEV=""
 WIFI_SEED=""
 WIFI_SSID="" WIFI_PSK="" WIFI_HIDDEN=no WIFI_COUNTRY=""
@@ -41,6 +44,9 @@ Usage: sudo $0 [options]
   --wifi-hidden       the network does not broadcast its SSID
   --wifi-country CC   regulatory domain, e.g. DE or US
   --write /dev/sdX    write the finished ISO to this USB stick (asks first)
+  --no-fill-disk      leave free space in the LVM volume group (default: grow / into it)
+  --swap-size SIZE    size of /swap.img, e.g. 2G or 512M; 0 removes it (default: 2G)
+  --reserved-pct N    ext4 blocks reserved for root on / in percent (default: 1)
   --keep-work         keep the work directory afterwards
 EOF
 }
@@ -59,6 +65,9 @@ while (($#)); do
     --wifi-hidden)  CLI_HIDDEN=yes ;;
     --wifi-country) CLI_COUNTRY=$2; shift ;;
     --write)        WRITE_DEV=$2; shift ;;
+    --no-fill-disk) FILL_DISK=no ;;
+    --swap-size)    SWAP_SIZE=$2; shift ;;
+    --reserved-pct) RESERVED_PCT=$2; shift ;;
     --keep-work)    KEEP_WORK=yes ;;
     -h|--help)      usage; exit 0 ;;
     *)              usage >&2; die "unknown option: $1" ;;
@@ -75,6 +84,8 @@ supported() { [[ $1 =~ ^([0-9]{2})\.([0-9]{2}) ]] && (( 10#${BASH_REMATCH[1]}${B
   die "Ubuntu releases are YY.04 or YY.10; there is no '$RELEASE' (try 26.04)"
 supported "$RELEASE" || die "only Ubuntu 26.04 or newer is supported"
 [[ $GPU == amdgpu || $GPU == radeon ]] || die "--gpu must be amdgpu or radeon"
+[[ $SWAP_SIZE =~ ^(0|[1-9][0-9]*[MG])$ ]] || die "--swap-size must look like 2G, 512M or 0"
+[[ $RESERVED_PCT =~ ^([0-9]|[1-4][0-9]|50)$ ]] || die "--reserved-pct must be 0-50"
 (( EUID == 0 )) || die "run as root (mounts, chroot): sudo $0 $*"
 [[ $(uname -m) == x86_64 ]] || die "needs an x86_64 host (the build chroot runs amd64 binaries)"
 for tool in xorriso curl sha256sum md5sum chroot mount findmnt lsblk; do
@@ -263,6 +274,11 @@ mkdir -p "$PAYLOAD"
 cp -r "$HERE/payload/wifi/." "$PAYLOAD/"
 [[ $THERMAL == yes ]] && cp -r "$HERE/payload/thermal/." "$PAYLOAD/"
 install -m755 "$HERE/install.sh" "$STAGE/trashcan/install.sh"
+cat > "$STAGE/trashcan/options" <<EOF
+FILL_DISK=$FILL_DISK
+SWAP_SIZE=$SWAP_SIZE
+RESERVED_PCT=$RESERVED_PCT
+EOF
 
 mkdir -p "$PAYLOAD/etc/default/grub.d"
 cat > "$PAYLOAD/etc/default/grub.d/90-trashcan.cfg" <<EOF

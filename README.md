@@ -13,6 +13,8 @@ also applies the following to the new system:
 | **Wi-Fi seed** | Optional: joins your network on first boot via netplan. |
 | **GPU** | Runs the D300s (Southern Islands) on `amdgpu` instead of `radeon` (`radeon.si_support=0 amdgpu.si_support=1`) for proper power management. |
 | **Thermal** | `trashcan-fand` raises the fan's minimum speed based on CPU *and* GPU temperatures. The Mac's own fan controller (SMC) alone lets the GPUs overheat under Linux. It stays in charge and can still spin the fan faster; the original minimum is restored when the service stops. |
+| **Disk** | Grows `/` into the free space Ubuntu's guided LVM layout leaves unused, reserves 1% instead of 5% of ext4 for root, and makes the swap file 2 GB instead of 8 GB (`--no-fill-disk`, `--reserved-pct`, `--swap-size`). |
+| **Network** | Marks the Ethernet ports optional, so boot doesn't wait 2 minutes for unplugged cables. |
 
 ## Build
 
@@ -38,7 +40,7 @@ sudo ./build-iso.sh --wifi-seed wifi-seed.conf
 Without `--iso`, it downloads the latest Ubuntu 26.04 server ISO and checks it
 against Ubuntu's official checksums. The result is
 `<iso-name>-macpro61.iso`. Run `./build-iso.sh --help` for every option,
-including `--output`, `--gpu radeon`, `--no-thermal` and `--wifi-ssid`.
+including `--output`, `--gpu radeon`, `--no-thermal`, `--swap-size` and `--wifi-ssid`.
 
 > [!WARNING]
 > A seeded ISO contains your Wi-Fi passphrase in plain text. Don't share it.

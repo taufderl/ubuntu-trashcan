@@ -11,6 +11,38 @@ in_target() { curtin in-target --target="$TARGET" -- "$@"; }
 step() { echo "==> $*"; }
 problem() { echo "!!! $*"; }
 
+FILL_DISK=yes SWAP_SIZE=2G RESERVED_PCT=1
+# shellcheck source=/dev/null
+[[ -r $SRC/options ]] && . "$SRC/options"
+ROOT_DEV=$(findmnt -no SOURCE "$TARGET")
+
+# The guided LVM layout only uses part of the disk; give / the rest.
+if [[ $FILL_DISK == yes ]] && lvs "$ROOT_DEV" >/dev/null 2>&1; then
+  vg=$(lvs --noheadings -o vg_name "$ROOT_DEV" | tr -d ' ')
+  if (( $(vgs --noheadings -o vg_free_count "$vg" | tr -d ' ') > 0 )); then
+    step "Growing / into the free space of $vg"
+    lvextend -r -l +100%FREE "$ROOT_DEV" || problem "lvextend failed"
+  fi
+fi
+
+if [[ $(findmnt -no FSTYPE "$TARGET") == ext4 ]]; then
+  step "Reserving $RESERVED_PCT% of / for root"
+  tune2fs -m "$RESERVED_PCT" "$ROOT_DEV" || problem "tune2fs failed"
+fi
+
+if [[ -f $TARGET/swap.img ]]; then
+  swapoff "$TARGET/swap.img" 2>/dev/null
+  rm -f "$TARGET/swap.img"
+  if [[ $SWAP_SIZE == 0 ]]; then
+    step "Removing the swap file"
+    sed -i '\#^/swap.img[[:space:]]#d' "$TARGET/etc/fstab"
+  else
+    step "Resizing the swap file to $SWAP_SIZE"
+    { fallocate -l "$SWAP_SIZE" "$TARGET/swap.img" && chmod 600 "$TARGET/swap.img" &&
+      mkswap "$TARGET/swap.img" >/dev/null; } || problem "could not recreate the swap file"
+  fi
+fi
+
 step "Installing patch files"
 (cd "$SRC/payload" && find . -type f) | while read -r f; do
   f=${f#./}
