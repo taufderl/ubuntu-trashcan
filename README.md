@@ -23,8 +23,12 @@ On a Linux x86_64 machine (WSL2 works, but keep `--workdir` off `/mnt/c`):
 ```bash
 sudo apt install xorriso curl
 cp wifi-seed.conf.example wifi-seed.conf   # optional, then edit it
-sudo ./build-iso.sh --wifi-seed wifi-seed.conf --write /dev/sdX
+sudo ./build-iso.sh --wifi-seed wifi-seed.conf
+sudo ./write-usb.sh ubuntu-26.04*-macpro61.iso /dev/sdX
 ```
+
+The second step can also be done on another machine with any raw image
+writer (Rufus in DD mode, Etcher), or in one go with `build-iso.sh --write /dev/sdX`.
 
 With no `--iso`, it downloads the latest Ubuntu 26.04 LTS server ISO and checks
 it against the official checksums. Run `./build-iso.sh --help` for all options

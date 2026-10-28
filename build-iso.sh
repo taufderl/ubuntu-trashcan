@@ -337,14 +337,5 @@ log "Done: $OUT"
 
 # --- 7. optionally flash it ----------------------------------------------------------
 
-if [[ -n $WRITE_DEV ]]; then
-  [[ -b $WRITE_DEV ]] || die "$WRITE_DEV is not a block device"
-  [[ $(lsblk -dno TYPE "$WRITE_DEV") == disk ]] || die "$WRITE_DEV is not a whole disk"
-  lsblk -nro MOUNTPOINT "$WRITE_DEV" | grep -q . && die "$WRITE_DEV has mounted partitions"
-  lsblk -o NAME,SIZE,MODEL,TRAN "$WRITE_DEV"
-  read -r -p "Type $WRITE_DEV to ERASE it and write the ISO: " answer
-  [[ $answer == "$WRITE_DEV" ]] || die "aborted"
-  dd if="$OUT" of="$WRITE_DEV" bs=4M conv=fsync oflag=direct status=progress
-  sync
-  log "USB stick ready: boot the Mac Pro holding Option (Alt) and pick 'EFI Boot'"
-fi
+[[ -n $WRITE_DEV ]] && "$HERE/write-usb.sh" "$OUT" "$WRITE_DEV"
+exit 0
