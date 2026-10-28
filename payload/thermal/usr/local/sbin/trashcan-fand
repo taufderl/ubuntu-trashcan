@@ -20,10 +20,11 @@ shopt -s nullglob
 max_temp() {
   local dev name t v max=-1
   for dev in "$SYSFS"/class/hwmon/hwmon*; do
-    read -r name < "$dev/name" 2>/dev/null || continue
+    # Legacy drivers (e.g. applesmc) keep their name on the parent device.
+    { read -r name < "$dev/name" || read -r name < "$dev/device/name"; } 2>/dev/null || continue
     [[ " $* " == *" $name "* ]] || continue
     for t in "$dev"/temp*_input; do
-      read -r v < "$t" 2>/dev/null && [[ $v =~ ^-?[0-9]+$ ]] && (( v > max )) && max=$v
+      { read -r v < "$t"; } 2>/dev/null && [[ $v =~ ^-?[0-9]+$ ]] && (( v > max )) && max=$v
     done
   done
   echo "$max"
