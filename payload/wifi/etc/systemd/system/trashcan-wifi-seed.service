@@ -1,0 +1,13 @@
+[Unit]
+Description=Join the Wi-Fi network seeded at ISO build time
+After=systemd-modules-load.service
+Before=network-online.target
+ConditionPathExists=/etc/trashcan/wifi-netplan.yaml.in
+ConditionKernelCommandLine=!boot=casper
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/trashcan-wifi-seed
+
+[Install]
+WantedBy=multi-user.target

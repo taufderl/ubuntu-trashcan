@@ -1,0 +1,21 @@
+#!/bin/bash
+# Turn the seeded netplan template into a real config once the wl interface
+# exists (its name is only known after the driver loads), then apply it.
+set -euo pipefail
+TEMPLATE=/etc/trashcan/wifi-netplan.yaml.in
+OUT=/etc/netplan/60-trashcan-wifi.yaml
+
+iface=""
+for _ in $(seq 60); do
+  for dev in /sys/class/net/*; do
+    if [[ -e $dev/phy80211 || -d $dev/wireless ]]; then iface=${dev##*/}; break 2; fi
+  done
+  sleep 1
+done
+[[ -n $iface ]] || { echo "no wireless interface appeared; is the wl driver loaded?" >&2; exit 1; }
+
+install -m600 /dev/null "$OUT"
+sed "s/@IFACE@/$iface/" "$TEMPLATE" > "$OUT"
+netplan apply
+rm -f "$TEMPLATE"
+echo "Wi-Fi configured on $iface ($OUT)"

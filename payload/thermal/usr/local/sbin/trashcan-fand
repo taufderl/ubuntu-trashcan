@@ -1,0 +1,83 @@
+#!/bin/bash
+# trashcan-fand: keep the Mac Pro 6,1 fan ahead of CPU *and* GPU heat.
+#
+# Under Linux the SMC only reacts to its own sensors and lets the FirePro
+# GPUs cook under load. This raises the SMC's minimum fan speed (fanN_min)
+# from the hottest coretemp and amdgpu/radeon reading. The SMC stays in
+# automatic mode, so it can still spin faster by itself, and the original
+# minimum is restored when the daemon stops.
+SYSFS=${TRASHCAN_SYSFS:-/sys}
+CONF=${TRASHCAN_FAND_CONF:-/etc/trashcan/fand.conf}
+STATE=${TRASHCAN_FAND_STATE:-/run/trashcan-fand.orig}
+
+INTERVAL=2 CPU_LOW=50 CPU_HIGH=80 GPU_LOW=55 GPU_HIGH=85 RAMP_DOWN=50
+# shellcheck source=/dev/null
+[[ -r $CONF ]] && . "$CONF"
+
+shopt -s nullglob
+
+# Hottest temp*_input (millidegrees) of the hwmon devices with the given names.
+max_temp() {
+  local dev name t v max=-1
+  for dev in "$SYSFS"/class/hwmon/hwmon*; do
+    read -r name < "$dev/name" 2>/dev/null || continue
+    [[ " $* " == *" $name "* ]] || continue
+    for t in "$dev"/temp*_input; do
+      read -r v < "$t" 2>/dev/null && [[ $v =~ ^-?[0-9]+$ ]] && (( v > max )) && max=$v
+    done
+  done
+  echo "$max"
+}
+
+# Fan demand in permille for temperature $1 (m°C) between $2 and $3 (°C).
+demand() {
+  local t=$1 lo=$(( $2 * 1000 )) hi=$(( $3 * 1000 ))
+  if (( t <= lo )); then echo 0
+  elif (( t >= hi )); then echo 1000
+  else echo $(( (t - lo) * 1000 / (hi - lo) ))
+  fi
+}
+
+fans=("$SYSFS"/devices/platform/applesmc.*/fan*_min)
+(( ${#fans[@]} )) || { echo "no applesmc fans found; nothing to do"; exit 0; }
+
+# Remember the factory minimum across restarts, so a crash can't ratchet it up.
+declare -A orig max cur
+[[ -r $STATE ]] && while read -r f v; do orig[$f]=$v; done < "$STATE"
+for f in "${fans[@]}"; do
+  read -r v < "$f"
+  [[ -n ${orig[$f]:-} ]] || orig[$f]=$v
+  cur[$f]=$v
+  read -r max[$f] < "${f%_min}_max"
+done
+for f in "${fans[@]}"; do echo "$f ${orig[$f]}"; done > "$STATE"
+
+restore() {
+  for f in "${fans[@]}"; do echo "${orig[$f]}" > "$f"; done
+  rm -f "$STATE"
+}
+trap 'restore; exit 0' TERM INT
+
+echo "controlling ${#fans[@]} fan(s): CPU ${CPU_LOW}-${CPU_HIGH}C, GPU ${GPU_LOW}-${GPU_HIGH}C"
+while :; do
+  cpu=$(max_temp coretemp)
+  gpu=$(max_temp amdgpu radeon)
+  if (( cpu < 0 && gpu < 0 )); then
+    level=1000   # no sensors readable: fail safe, full speed
+  else
+    level=0
+    (( cpu >= 0 )) && level=$(demand "$cpu" "$CPU_LOW" "$CPU_HIGH")
+    (( gpu >= 0 )) && d=$(demand "$gpu" "$GPU_LOW" "$GPU_HIGH") && (( d > level )) && level=$d
+  fi
+
+  for f in "${fans[@]}"; do
+    lo=${orig[$f]} hi=${max[$f]}
+    target=$(( lo + (hi - lo) * level / 1000 ))
+    (( target < cur[$f] - RAMP_DOWN )) && target=$(( cur[$f] - RAMP_DOWN ))
+    if (( target != cur[$f] )); then
+      echo "$target" > "$f" && cur[$f]=$target
+    fi
+  done
+
+  sleep "$INTERVAL" & wait $!
+done

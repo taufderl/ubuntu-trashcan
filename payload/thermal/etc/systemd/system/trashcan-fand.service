@@ -1,0 +1,12 @@
+[Unit]
+Description=Mac Pro 6,1 fan control (CPU and GPU aware)
+After=systemd-modules-load.service
+ConditionPathExists=/sys/devices/platform/applesmc.768
+
+[Service]
+ExecStart=/usr/local/sbin/trashcan-fand
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

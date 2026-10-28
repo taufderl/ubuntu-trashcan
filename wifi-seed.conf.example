@@ -1,0 +1,7 @@
+# Copy to wifi-seed.conf and pass with --wifi-seed wifi-seed.conf.
+# The passphrase ends up in plain text on the USB stick and in
+# /etc/netplan on the installed system (root-only, mode 600).
+WIFI_SSID="My Network"
+WIFI_PSK="correct horse battery staple"
+# WIFI_HIDDEN=yes
+# WIFI_COUNTRY=DE
