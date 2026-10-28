@@ -48,7 +48,7 @@ for f in "${fans[@]}"; do
   read -r v < "$f"
   [[ -n ${orig[$f]:-} ]] || orig[$f]=$v
   cur[$f]=$v
-  read -r max[$f] < "${f%_min}_max"
+  read -r "max[$f]" < "${f%_min}_max"
 done
 for f in "${fans[@]}"; do echo "$f ${orig[$f]}"; done > "$STATE"
 

@@ -198,10 +198,12 @@ mnt -o loop,ro "$ISO" "$ISOMNT"
 BASE_LAYER=$ISOMNT/casper/ubuntu-server-minimal.squashfs
 [[ -f $BASE_LAYER ]] || die "casper/ubuntu-server-minimal.squashfs not found on the ISO"
 
-# The installer installs the kernel from the ISO pool, so take its version from there.
-KVER=$(find "$ISOMNT/pool" -name 'linux-image-[0-9]*-generic_*.deb' -printf '%f\n' |
-       sed -E 's/^linux-image-([^_]+)_.*/\1/' | sort -V | tail -1)
-[[ -n $KVER ]] || die "cannot find the installer's kernel (linux-image-*-generic) in the ISO pool"
+# The base layer is what every install starts from, kernel included.
+LOWER=$W/layer
+mkdir -p "$LOWER"
+mnt -t squashfs -o loop,ro "$BASE_LAYER" "$LOWER"
+KVER=$(ls "$LOWER/usr/lib/modules" | sort -V | tail -1)
+[[ -n $KVER ]] || die "no kernel found in $(basename "$BASE_LAYER")"
 SNAPSHOT=$(grep -oE '\(([0-9]{8})' "$ISOMNT/.disk/info" 2>/dev/null | tr -d '(' || true)
 log "ISO: $(cat "$ISOMNT/.disk/info" 2>/dev/null || basename "$ISO")"
 supported "$(grep -oE '[0-9]{2}\.[0-9]{2}' "$ISOMNT/.disk/info" | head -1)" ||
@@ -213,10 +215,9 @@ log "Kernel: $KVER"
 # The chroot is the minimal server layer, i.e. what the smallest install starts
 # from, so apt downloads every package the target could be missing.
 fetch_debs() {
-  local depth=${#MOUNTS[@]} lower="$W/layer" root="$W/root" codename
-  mkdir -p "$lower" "$root" "$W/upper" "$W/ovl-work"
-  mnt -t squashfs -o loop,ro "$BASE_LAYER" "$lower"
-  mnt -t overlay overlay -o "lowerdir=$lower,upperdir=$W/upper,workdir=$W/ovl-work" "$root"
+  local depth=${#MOUNTS[@]} root="$W/root" codename
+  mkdir -p "$root" "$W/upper" "$W/ovl-work"
+  mnt -t overlay overlay -o "lowerdir=$LOWER,upperdir=$W/upper,workdir=$W/ovl-work" "$root"
   for d in dev dev/pts proc sys; do mnt --bind "/$d" "$root/$d"; done
 
   rm -f "$root/etc/resolv.conf"
